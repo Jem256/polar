@@ -1,11 +1,11 @@
+import { waitFor } from '@testing-library/react';
 import { createStore } from 'easy-peasy';
-import { LndNode } from 'shared/types';
+import { LndNode, Status } from 'shared/types';
 import {
   LightningNodeBalances,
   LightningNodeChannel,
   LightningNodeInfo,
 } from 'lib/lightning/types';
-import { BitcoindLibrary } from 'types';
 import * as asyncUtil from 'utils/async';
 import { initChartFromNetwork } from 'utils/chart';
 import {
@@ -14,9 +14,10 @@ import {
   injections,
   lightningServiceMock,
   mockProperty,
+  bitcoinServiceMock,
 } from 'utils/tests';
 import appModel from './app';
-import bitcoindModel from './bitcoind';
+import bitcoinModel from './bitcoin';
 import designerModel from './designer';
 import lightningModel from './lightning';
 import networkModel from './network';
@@ -24,14 +25,13 @@ import modalsModel from './modals';
 
 jest.mock('utils/async');
 const asyncUtilMock = asyncUtil as jest.Mocked<typeof asyncUtil>;
-const bitcoindServiceMock = injections.bitcoindService as jest.Mocked<BitcoindLibrary>;
 
 describe('Lightning Model', () => {
   const rootModel = {
     app: appModel,
     network: networkModel,
     lightning: lightningModel,
-    bitcoind: bitcoindModel,
+    bitcoin: bitcoinModel,
     designer: designerModel,
     modals: modalsModel,
   };
@@ -71,7 +71,7 @@ describe('Lightning Model', () => {
     store = createStore(rootModel, { injections, initialState });
 
     asyncUtilMock.delay.mockResolvedValue(Promise.resolve());
-    bitcoindServiceMock.sendFunds.mockResolvedValue('txid');
+    bitcoinServiceMock.sendFunds.mockResolvedValue('txid');
     lightningServiceMock.getNewAddress.mockResolvedValue({ address: 'bc1aaaa' });
     lightningServiceMock.getInfo.mockResolvedValue(
       defaultStateInfo({
@@ -171,7 +171,7 @@ describe('Lightning Model', () => {
     await openChannel({ from, to, sats, autoFund: false, isPrivate: false });
     expect(lightningServiceMock.getInfo).toHaveBeenCalledTimes(1);
     expect(lightningServiceMock.openChannel).toHaveBeenCalledTimes(1);
-    expect(bitcoindServiceMock.mine).toHaveBeenCalledTimes(1);
+    expect(bitcoinServiceMock.mine).toHaveBeenCalledTimes(1);
   });
 
   it('should open a channel and mine on the first bitcoin node', async () => {
@@ -190,7 +190,7 @@ describe('Lightning Model', () => {
     await getInfo(to);
     await openChannel({ from, to, sats, autoFund: false, isPrivate: false });
     const btcNode = store.getState().network.networks[0].nodes.bitcoin[0];
-    expect(bitcoindServiceMock.mine).toHaveBeenCalledWith(6, btcNode);
+    expect(bitcoinServiceMock.mine).toHaveBeenCalledWith(6, btcNode);
   });
 
   it('should cause some delay waiting for nodes', async () => {
@@ -245,6 +245,29 @@ describe('Lightning Model', () => {
         expect.any(Function),
       ),
     );
+  });
+
+  it('should sync the chart when a channel event occurs', async () => {
+    const callbacks: Record<string, any> = {};
+    lightningServiceMock.subscribeChannelEvents.mockImplementation(async (_node, cb) => {
+      callbacks[_node.name] = cb;
+    });
+
+    const { addChannelListeners } = store.getActions().lightning;
+    await addChannelListeners(network);
+    expect(Object.keys(callbacks)).toHaveLength(4);
+
+    // spy on the syncChart action and prevent it from running because it requires
+    // mocking a bunch and API calls
+    const spy = jest
+      .spyOn(store.getActions().designer, 'syncChart')
+      .mockResolvedValue(false);
+    store.getActions().network.setStatus({ id: network.id, status: Status.Started });
+
+    // simulate a channel event
+    const callback = callbacks[network.nodes.lightning[0].name];
+    callback({ type: 'Pending' });
+    waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
   });
 
   it('should reset channels info', async () => {
