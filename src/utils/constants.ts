@@ -333,11 +333,12 @@ export const REPO_STATE_URL =
  * are pushed to Docker Hub, this list should be updated along with the /docker/nodes.json file.
  */
 export const defaultRepoState: DockerRepoState = {
-  version: 68,
+  version: 70,
   images: {
     LND: {
-      latest: '0.18.4-beta',
+      latest: '0.18.5-beta',
       versions: [
+        '0.18.5-beta',
         '0.18.4-beta',
         '0.18.3-beta',
         '0.18.2-beta',
@@ -349,6 +350,7 @@ export const defaultRepoState: DockerRepoState = {
       // not all LND versions are compatible with all bitcoind versions.
       // this mapping specifies the highest compatible bitcoind for each LND version
       compatibility: {
+        '0.18.5-beta': '28.0',
         '0.18.4-beta': '28.0',
         '0.18.3-beta': '27.0',
         '0.18.2-beta': '27.0',
@@ -359,8 +361,8 @@ export const defaultRepoState: DockerRepoState = {
       },
     },
     'c-lightning': {
-      latest: '24.11.1',
-      versions: ['24.11.1', '24.11', '24.08.1', '24.05'],
+      latest: '25.02',
+      versions: ['25.02', '24.11.1', '24.11', '24.08.1', '24.05'],
     },
     eclair: {
       latest: '0.11.0',
@@ -375,20 +377,22 @@ export const defaultRepoState: DockerRepoState = {
       versions: [],
     },
     tapd: {
-      latest: '0.5.0-alpha',
-      versions: ['0.5.0-alpha', '0.4.1-alpha', '0.3.3-alpha'],
+      latest: '0.5.1-alpha',
+      versions: ['0.5.1-alpha', '0.5.0-alpha', '0.4.1-alpha', '0.3.3-alpha'],
       // Not all tapd versions are compatible with all LND versions.
       // This mapping specifies the minimum compatible LND for each tapd version
       compatibility: {
+        '0.5.1-alpha': '0.18.5-beta',
         '0.5.0-alpha': '0.18.4-beta',
         '0.4.1-alpha': '0.18.0-beta',
         '0.3.3-alpha': '0.16.0-beta',
       },
     },
     litd: {
-      latest: '0.14.0-alpha',
-      versions: ['0.14.0-alpha'],
+      latest: '0.14.1-alpha',
+      versions: ['0.14.1-alpha', '0.14.0-alpha'],
       compatibility: {
+        '0.14.1-alpha': '28.0',
         '0.14.0-alpha': '28.0',
       },
     },
