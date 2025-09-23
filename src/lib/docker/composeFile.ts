@@ -14,7 +14,8 @@ import {
   litdCredentials,
 } from 'utils/constants';
 import { getContainerName, getDefaultCommand } from 'utils/network';
-import { bitcoind, clightning, eclair, litd, lnd, tapd, simln } from './nodeTemplates';
+import { isWindows } from 'utils/system';
+import { bitcoind, clightning, eclair, litd, lnd, simln, tapd } from './nodeTemplates';
 
 export interface ComposeService {
   image: string;
@@ -33,6 +34,9 @@ export interface ComposeContent {
   name: string;
   services: {
     [key: string]: ComposeService;
+  };
+  volumes?: {
+    [key: string]: { name: string } | null;
   };
 }
 
@@ -121,8 +125,27 @@ class ComposeFile {
     if (grpc === 0) nodeCommand = nodeCommand.replace('--grpc-port=11001', '');
     // replace the variables in the command
     const command = this.mergeCommand(nodeCommand, variables);
+    // On Windows, use a named Docker volume for CLN's data directory instead of a bind mount.
+    let namedVolumeName: string | undefined;
+    if (isWindows()) {
+      namedVolumeName = container;
+      // register the named volume in the top-level volumes declaration
+      if (!this.content.volumes) {
+        this.content.volumes = {};
+      }
+      this.content.volumes[namedVolumeName] = null;
+    }
     // add the docker service
-    const svc = clightning(name, container, image, rest, grpc, p2p, command);
+    const svc = clightning(
+      name,
+      container,
+      image,
+      rest,
+      grpc,
+      p2p,
+      command,
+      namedVolumeName,
+    );
     this.addService(svc);
   }
 
