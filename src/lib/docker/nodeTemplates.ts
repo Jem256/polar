@@ -72,6 +72,7 @@ export const clightning = (
   grpcPort: number,
   p2pPort: number,
   command: string,
+  namedVolumeName?: string,
 ): ComposeService => ({
   image,
   container_name: container,
@@ -79,7 +80,10 @@ export const clightning = (
   command: trimInside(command),
   restart: 'always',
   volumes: [
-    `./volumes/${dockerConfigs['c-lightning'].volumeDirName}/${name}/${dockerConfigs['c-lightning'].dataDir}:/home/clightning/.lightning`,
+    // on windows, use a named volume so the CLN data stays on docker VM ext4 filesystem
+    namedVolumeName
+      ? `${namedVolumeName}:/home/clightning/.lightning`
+      : `./volumes/${dockerConfigs['c-lightning'].volumeDirName}/${name}/${dockerConfigs['c-lightning'].dataDir}:/home/clightning/.lightning`,
     `./volumes/${dockerConfigs['c-lightning'].volumeDirName}/${name}/${dockerConfigs['c-lightning'].apiDir}:/opt/c-lightning-rest/certs`,
   ],
   expose: [
