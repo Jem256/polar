@@ -133,7 +133,7 @@ export const dockerConfigs: Record<NodeImplementation, DockerConfig> = {
     name: 'Core Lightning',
     imageName: 'polarlightning/clightning',
     logo: clightningLogo,
-    platforms: ['mac', 'linux'],
+    platforms: ['mac', 'linux', 'windows'],
     volumeDirName: 'c-lightning',
     command: [
       'lightningd',
@@ -156,6 +156,8 @@ export const dockerConfigs: Record<NodeImplementation, DockerConfig> = {
       '--clnrest-protocol=http',
       '--clnrest-host=0.0.0.0',
       '--developer',
+      '--rpc-file=/tmp/lightning-rpc',
+      '--lightning-dir=/home/clightning/.lightning',
     ].join('\n  '),
     // if vars are modified, also update composeFile.ts & the i18n strings for cmps.nodes.CommandVariables
     variables: ['name', 'backendName', 'rpcUser', 'rpcPass'],
