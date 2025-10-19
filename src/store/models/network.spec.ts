@@ -65,6 +65,7 @@ describe('Network model', () => {
     tapdNodes: 0,
     litdNodes: 1,
     customNodes: {},
+    manualMineCount: 6,
   };
 
   beforeEach(() => {
@@ -1020,6 +1021,60 @@ describe('Network model', () => {
       bitcoin[0].type = 'asdf' as any;
       await monitorStartup(bitcoin);
       expect(bitcoinServiceMock.waitUntilOnline).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ManualMineCount', () => {
+    beforeEach(async () => {
+      await store.getActions().network.addNetwork(addNetworkArgs);
+    });
+
+    it('should set manual mine count for a network', () => {
+      const { setManualMineCount } = store.getActions().network;
+      const networkId = firstNetwork().id;
+
+      expect(firstNetwork().manualMineCount).toBe(6);
+      setManualMineCount({ id: networkId, count: 10 });
+      expect(firstNetwork().manualMineCount).toBe(10);
+    });
+
+    it('should fail to set manual mine count with invalid network id', () => {
+      const { setManualMineCount } = store.getActions().network;
+
+      expect(() => setManualMineCount({ id: 999, count: 10 })).toThrow(
+        "Network with the id '999' was not found.",
+      );
+    });
+
+    it('should update manual mine count and persist changes', async () => {
+      const { updateManualMineCount } = store.getActions().network;
+      const networkId = firstNetwork().id;
+
+      // Reset mock counters
+      (injections.dockerService.saveComposeFile as jest.Mock).mockClear();
+      (injections.dockerService.saveNetworks as jest.Mock).mockClear();
+
+      // Update manual mine count
+      await updateManualMineCount({ id: networkId, count: 15 });
+
+      // Verify the value was updated
+      expect(firstNetwork().manualMineCount).toBe(15);
+
+      // Verify changes were persisted
+      expect(injections.dockerService.saveComposeFile).toHaveBeenCalledTimes(1);
+      expect(injections.dockerService.saveNetworks).toHaveBeenCalledTimes(1);
+    });
+
+    it('should fail to update manual mine count with invalid network id', () => {
+      const { updateManualMineCount } = store.getActions().network;
+
+      // Reset mock counters
+      (injections.dockerService.saveComposeFile as jest.Mock).mockClear();
+      (injections.dockerService.saveNetworks as jest.Mock).mockClear();
+
+      expect(() => updateManualMineCount({ id: 999, count: 10 })).rejects.toThrow(
+        "Network with the id '999' was not found.",
+      );
     });
   });
 
