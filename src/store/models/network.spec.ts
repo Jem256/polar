@@ -1050,17 +1050,13 @@ describe('Network model', () => {
       const { updateManualMineCount } = store.getActions().network;
       const networkId = firstNetwork().id;
 
-      // Reset mock counters
       (injections.dockerService.saveComposeFile as jest.Mock).mockClear();
       (injections.dockerService.saveNetworks as jest.Mock).mockClear();
 
-      // Update manual mine count
       await updateManualMineCount({ id: networkId, count: 15 });
 
-      // Verify the value was updated
       expect(firstNetwork().manualMineCount).toBe(15);
 
-      // Verify changes were persisted
       expect(injections.dockerService.saveComposeFile).toHaveBeenCalledTimes(1);
       expect(injections.dockerService.saveNetworks).toHaveBeenCalledTimes(1);
     });
@@ -1068,7 +1064,6 @@ describe('Network model', () => {
     it('should fail to update manual mine count with invalid network id', () => {
       const { updateManualMineCount } = store.getActions().network;
 
-      // Reset mock counters
       (injections.dockerService.saveComposeFile as jest.Mock).mockClear();
       (injections.dockerService.saveNetworks as jest.Mock).mockClear();
 
