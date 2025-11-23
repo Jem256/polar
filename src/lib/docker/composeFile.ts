@@ -13,8 +13,8 @@ import {
   eclairCredentials,
   litdCredentials,
 } from 'utils/constants';
-import { getContainerName, getDefaultCommand } from 'utils/network';
-import { bitcoind, clightning, eclair, litd, lnd, tapd, simln } from './nodeTemplates';
+import { getContainerName, getDefaultCommand, updateTorFlags } from 'utils/network';
+import { bitcoind, clightning, eclair, litd, lnd, simln, tapd } from './nodeTemplates';
 
 export interface ComposeService {
   image: string;
@@ -93,11 +93,21 @@ class ComposeFile {
     // use the node's custom image or the default for the implementation
     const image = node.docker.image || `${dockerConfigs.LND.imageName}:${version}`;
     // use the node's custom command or the default for the implementation
-    const nodeCommand = node.docker.command || getDefaultCommand('LND', version);
+    let nodeCommand = node.docker.command || getDefaultCommand('LND', version);
+
+    // Add Tor flags if Tor is enabled
+    nodeCommand = updateTorFlags(nodeCommand, !!node.enableTor);
+
     // replace the variables in the command
     const command = this.mergeCommand(nodeCommand, variables);
+
     // add the docker service
     const svc = lnd(name, container, image, rest, grpc, p2p, command);
+    // add ENABLE_TOR variable
+    svc.environment = {
+      ...svc.environment,
+      ENABLE_TOR: node.enableTor ? 'true' : 'false',
+    };
     this.addService(svc);
   }
 
