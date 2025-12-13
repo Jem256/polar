@@ -4,7 +4,7 @@ ARG BITCOIN_VERSION
 ENV PATH=/opt/bitcoin-${BITCOIN_VERSION}/bin:$PATH
 
 RUN apt-get update -y \
-  && apt-get install -y curl gosu \
+  && apt-get install -y curl gosu tor\
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -14,7 +14,7 @@ RUN SYS_ARCH="$(uname -m)" \
   && rm *.tar.gz
 
 RUN curl -SLO https://raw.githubusercontent.com/bitcoin/bitcoin/master/contrib/completions/bash/bitcoin-cli.bash \
-  && mkdir /etc/bash_completion.d \
+  && mkdir -p /etc/bash_completion.d \
   && mv bitcoin-cli.bash /etc/bash_completion.d/bitcoin-cli.bash-completion \
   && curl -SLO https://raw.githubusercontent.com/scop/bash-completion/master/bash_completion \
   && mv bash_completion /usr/share/bash-completion/
@@ -26,7 +26,7 @@ RUN chmod a+x /entrypoint.sh
 
 VOLUME ["/home/bitcoin/.bitcoin"]
 
-EXPOSE 18443 18444 28334 28335
+EXPOSE 18443 18444 28334 28335 9050 9051
 
 ENTRYPOINT ["/entrypoint.sh"]
 
