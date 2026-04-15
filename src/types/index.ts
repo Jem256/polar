@@ -178,6 +178,7 @@ export interface LightningService {
     node: LightningNode,
     amount: number,
     memo?: string,
+    expiry?: number,
     assetInfo?: { nodeId: string; scid: string; msats: string },
   ) => Promise<string>;
   payInvoice: (

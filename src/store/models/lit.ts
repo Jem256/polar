@@ -31,6 +31,8 @@ export interface CreateInvoicePayload {
   node: LitdNode;
   assetId: string;
   amount: number;
+  memo?: string;
+  expiry?: number;
 }
 
 export interface PayInvoicePayload {
@@ -113,7 +115,7 @@ const litModel: LitModel = {
     await actions.getSessions(node);
   }),
   createAssetInvoice: thunk(
-    async (_, { node, assetId, amount }, { injections, getStoreState }) => {
+    async (_, { node, assetId, amount, memo, expiry }, { injections, getStoreState }) => {
       const assetsInChannels = getStoreState()
         .lit.getAssetsInChannels({ nodeName: node.name })
         .filter(a => a.asset.id === assetId)
@@ -127,7 +129,7 @@ const litModel: LitModel = {
       const tapdNode = mapToTapd(node);
       const invoice = await injections.tapFactory
         .getService(tapdNode)
-        .addInvoice(tapdNode, assetId, amount, '', 3600);
+        .addInvoice(tapdNode, assetId, amount, memo ?? '', expiry ?? 3600);
 
       // decode the invoice to get the amount in sats
       const decoded = await injections.lightningFactory
