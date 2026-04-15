@@ -158,6 +158,31 @@ describe('LIT Model', () => {
         amount: 200,
       });
       expect(res).toEqual({ invoice: 'lnbc1invoice', sats: 100 });
+      expect(tapServiceMock.addInvoice).toHaveBeenCalledWith(
+        expect.anything(),
+        'test-id',
+        200,
+        '',
+        3600,
+      );
+    });
+
+    it('should create an asset invoice with memo and expiry', async () => {
+      await store.getActions().lightning.getChannels(node);
+      await store.getActions().lit.createAssetInvoice({
+        node,
+        assetId: 'test-id',
+        amount: 200,
+        memo: 'bootcamp demo',
+        expiry: 7200,
+      });
+      expect(tapServiceMock.addInvoice).toHaveBeenCalledWith(
+        expect.anything(),
+        'test-id',
+        200,
+        'bootcamp demo',
+        7200,
+      );
     });
 
     it('should throw an error when creating an asset invoice with a high balance', async () => {

@@ -2,7 +2,17 @@ import React, { ReactNode, useCallback, useMemo } from 'react';
 import { useAsync, useAsyncCallback } from 'react-async-hook';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import styled from '@emotion/styled';
-import { Button, Form, InputNumber, message, Modal, Result, Select } from 'antd';
+import {
+  Button,
+  Collapse,
+  Form,
+  Input,
+  InputNumber,
+  message,
+  Modal,
+  Result,
+  Select,
+} from 'antd';
 import { usePrefixedTranslation } from 'hooks';
 import { LitdNode } from 'shared/types';
 import { LightningNodeChannelAsset } from 'lib/lightning/types';
@@ -32,6 +42,8 @@ interface FormValues {
   node: string;
   assetId: string;
   amount: number;
+  memo?: string;
+  expiry?: number;
 }
 
 interface Props {
@@ -84,11 +96,22 @@ const CreateInvoiceModal: React.FC<Props> = ({ network }) => {
       let assetName = 'sats';
       if (assetId === 'sats') {
         const amount = parseInt(`${values.amount}`);
-        invoice = await createInvoice({ node, amount, memo: '' });
+        invoice = await createInvoice({
+          node,
+          amount,
+          memo: values.memo,
+          expiry: values.expiry,
+        });
       } else {
         const litdNode = node as LitdNode;
         const amount = toAssetUnits({ assetId, amount: values.amount });
-        const res = await createAssetInvoice({ node: litdNode, assetId, amount });
+        const res = await createAssetInvoice({
+          node: litdNode,
+          assetId,
+          amount,
+          memo: values.memo,
+          expiry: values.expiry,
+        });
         invoice = res.invoice;
         const asset = assets.find(a => a.id === assetId) as LightningNodeChannelAsset;
         assetName = `${asset.name} (${format(res.sats)} sats)`;
@@ -179,6 +202,31 @@ const CreateInvoiceModal: React.FC<Props> = ({ network }) => {
             style={{ width: '100%' }}
           />
         </Form.Item>
+
+        <Collapse>
+          <Collapse.Panel header={l('advancedOptions')} key="advanced">
+            <Form.Item name="memo" label={l('memoLabel')}>
+              <Input
+                placeholder={l('memoPlaceholder')}
+                disabled={createAsync.loading}
+                style={{ width: '100%' }}
+                maxLength={639}
+              />
+            </Form.Item>
+            <Form.Item
+              name="expiry"
+              label={l('expiryLabel')}
+              tooltip={l('expiryTooltip')}
+            >
+              <InputNumber<number>
+                min={1}
+                placeholder={l('expiryPlaceholder')}
+                disabled={createAsync.loading}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Collapse.Panel>
+        </Collapse>
       </Form>
     );
   } else {
