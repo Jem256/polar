@@ -179,11 +179,13 @@ export class CLightningService implements LightningService {
     node: LightningNode,
     amount: number,
     memo?: string,
+    expiry?: number,
   ): Promise<string> {
     const body: CLN.InvoiceRequest = {
       amount_msat: amount * 1000,
       label: new Date().getTime().toString(),
       description: memo || `Polar Invoice for ${node.name}`,
+      expiry,
     };
 
     const res = await httpPost<CLN.InvoiceResponse>(node, 'invoice', body);

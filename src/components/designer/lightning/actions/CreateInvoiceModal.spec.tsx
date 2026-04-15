@@ -55,6 +55,7 @@ describe('CreateInvoiceModal', () => {
     const { getByText } = await renderComponent();
     expect(getByText('Node')).toBeInTheDocument();
     expect(getByText('Amount')).toBeInTheDocument();
+    expect(getByText('Advanced Options')).toBeInTheDocument();
   });
 
   it('should render form inputs', async () => {
@@ -112,7 +113,34 @@ describe('CreateInvoiceModal', () => {
       expect(await findByText('Successfully Created the Invoice')).toBeInTheDocument();
       expect(getByDisplayValue('lnbc1invoice')).toBeInTheDocument();
       const node = network.nodes.lightning[0];
-      expect(lightningServiceMock.createInvoice).toHaveBeenCalledWith(node, 1000, '');
+      expect(lightningServiceMock.createInvoice).toHaveBeenCalledWith(
+        node,
+        1000,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should create invoice with memo and expiry from advanced options', async () => {
+      const { getByText, getByLabelText, findByText, store } = await renderComponent();
+      await waitFor(() => {
+        store.getActions().modals.showCreateInvoice({ nodeName: 'alice' });
+      });
+      fireEvent.change(getByLabelText('Amount'), { target: { value: '1000' } });
+
+      fireEvent.click(getByText('Advanced Options'));
+      fireEvent.change(getByLabelText('Memo'), { target: { value: 'test memo' } });
+      fireEvent.change(getByLabelText('Expiry (seconds)'), { target: { value: '3600' } });
+
+      fireEvent.click(getByText('Create Invoice'));
+      expect(await findByText('Successfully Created the Invoice')).toBeInTheDocument();
+      const node = network.nodes.lightning[0];
+      expect(lightningServiceMock.createInvoice).toHaveBeenCalledWith(
+        node,
+        1000,
+        'test memo',
+        3600,
+      );
     });
 
     it('should close the modal', async () => {

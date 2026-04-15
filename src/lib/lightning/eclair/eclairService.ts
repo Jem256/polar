@@ -186,10 +186,12 @@ class EclairService implements LightningService {
     node: LightningNode,
     amount: number,
     memo?: string,
+    expiry?: number,
   ): Promise<string> {
     const body: ELN.CreateInvoiceRequest = {
       description: memo || `Payment to ${node.name}`,
       amountMsat: amount * 1000,
+      expireIn: expiry,
     };
     const inv = await httpPost<ELN.CreateInvoiceResponse>(node, 'createinvoice', body);
 

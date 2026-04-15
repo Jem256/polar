@@ -143,6 +143,7 @@ class LndService implements LightningService {
     node: LightningNode,
     amount: number,
     memo?: string,
+    expiry?: number,
     assetInfo?: {
       nodeId: string;
       scid: string;
@@ -152,6 +153,7 @@ class LndService implements LightningService {
     const req: LND.InvoicePartial = {
       value: amount.toString(),
       memo,
+      expiry: expiry?.toString(),
     };
     // hop hints are used for creating TAP invoices
     if (assetInfo) {

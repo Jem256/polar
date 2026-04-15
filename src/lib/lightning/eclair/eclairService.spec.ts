@@ -297,14 +297,27 @@ describe('EclairService', () => {
     expect(eclairApiMock.httpPost).toHaveBeenCalledWith(
       node,
       'createinvoice',
-      expect.objectContaining({ description: `Payment to ${node.name}` }),
+      expect.objectContaining({
+        description: `Payment to ${node.name}`,
+        expireIn: undefined,
+      }),
     );
-    const res2 = await eclairService.createInvoice(node, 100000, 'test-memo');
-    expect(res2).toEqual('lnbc100xyz');
+  });
+
+  it('should create an invoice with memo and expiry', async () => {
+    const createInvResponse: Partial<ELN.CreateInvoiceResponse> = {
+      serialized: 'lnbc100xyz',
+    };
+    eclairApiMock.httpPost.mockResolvedValue(createInvResponse);
+    const res = await eclairService.createInvoice(node, 100000, 'test-memo', 3600);
+    expect(res).toEqual('lnbc100xyz');
     expect(eclairApiMock.httpPost).toHaveBeenCalledWith(
       node,
       'createinvoice',
-      expect.objectContaining({ description: 'test-memo' }),
+      expect.objectContaining({
+        description: 'test-memo',
+        expireIn: 3600,
+      }),
     );
   });
 
