@@ -145,6 +145,32 @@ describe('CLightningService', () => {
     clightningApiMock.httpPost.mockResolvedValue(invResponse);
     const actual = await clightningService.createInvoice(node, 1000);
     expect(actual).toEqual(expected);
+    expect(clightningApiMock.httpPost).toHaveBeenCalledWith(
+      node,
+      'invoice',
+      expect.objectContaining({
+        description: `Polar Invoice for ${node.name}`,
+        expiry: undefined,
+      }),
+    );
+  });
+
+  it('should create an invoice with memo and expiry', async () => {
+    const expected = 'lnbc1invoice';
+    const invResponse: Partial<CLN.InvoiceResponse> = {
+      bolt11: expected,
+    };
+    clightningApiMock.httpPost.mockResolvedValue(invResponse);
+    const actual = await clightningService.createInvoice(node, 1000, 'test memo', 3600);
+    expect(actual).toEqual(expected);
+    expect(clightningApiMock.httpPost).toHaveBeenCalledWith(
+      node,
+      'invoice',
+      expect.objectContaining({
+        description: 'test memo',
+        expiry: 3600,
+      }),
+    );
   });
 
   it('should pay an invoice', async () => {

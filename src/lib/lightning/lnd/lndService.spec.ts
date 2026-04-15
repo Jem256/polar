@@ -108,7 +108,34 @@ describe('LndService', () => {
     lndProxyClient.createInvoice = jest.fn().mockResolvedValue(mocked);
     const actual = await lndService.createInvoice(node, 1000);
     expect(actual).toEqual(expected);
+    expect(lndProxyClient.createInvoice).toHaveBeenCalledWith(
+      node,
+      expect.objectContaining({
+        value: '1000',
+        memo: undefined,
+        expiry: undefined,
+        private: true,
+      }),
+    );
   });
+
+  it('should create an invoice with memo and expiry', async () => {
+    const expected = 'lnbc1invoice';
+    const mocked = { paymentRequest: expected };
+    lndProxyClient.createInvoice = jest.fn().mockResolvedValue(mocked);
+    const actual = await lndService.createInvoice(node, 1000, 'test memo', 3600);
+    expect(actual).toEqual(expected);
+    expect(lndProxyClient.createInvoice).toHaveBeenCalledWith(
+      node,
+      expect.objectContaining({
+        value: '1000',
+        memo: 'test memo',
+        expiry: '3600',
+        private: true,
+      }),
+    );
+  });
+
   it('should pay an invoice', async () => {
     const payResponse = { paymentPreimage: 'preimage' };
     const decodeResponse = {
@@ -382,7 +409,13 @@ describe('LndService', () => {
       const expected = 'lnbc1invoice';
       const mocked = { paymentRequest: expected };
       lndProxyClient.createInvoice = jest.fn().mockResolvedValue(mocked);
-      const actual = await lndService.createInvoice(node, 1000, undefined, assetInfo);
+      const actual = await lndService.createInvoice(
+        node,
+        1000,
+        undefined,
+        undefined,
+        assetInfo,
+      );
       expect(actual).toEqual(expected);
     });
 
@@ -392,7 +425,7 @@ describe('LndService', () => {
         .mockResolvedValue(defaultLndListChannels({}));
 
       await expect(
-        lndService.createInvoice(node, 1000, undefined, assetInfo),
+        lndService.createInvoice(node, 1000, undefined, undefined, assetInfo),
       ).rejects.toThrow('No asset channel found with peer nodeId');
     });
 
@@ -400,7 +433,7 @@ describe('LndService', () => {
       lndProxyClient.getChanInfo = jest.fn().mockResolvedValue(undefined);
 
       await expect(
-        lndService.createInvoice(node, 1000, undefined, assetInfo),
+        lndService.createInvoice(node, 1000, undefined, undefined, assetInfo),
       ).rejects.toThrow('No channel info found for channel 1234');
     });
 
@@ -411,7 +444,7 @@ describe('LndService', () => {
       });
 
       await expect(
-        lndService.createInvoice(node, 1000, undefined, assetInfo),
+        lndService.createInvoice(node, 1000, undefined, undefined, assetInfo),
       ).rejects.toThrow('No channel policy found for channel 1234');
     });
   });
