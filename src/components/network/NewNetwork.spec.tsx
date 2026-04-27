@@ -86,13 +86,6 @@ describe('NewNetwork component', () => {
     expect(getByLabelText('My Test Image')).toHaveValue('0');
   });
 
-  it('should disable c-lightning input on Windows', () => {
-    mockOS.platform.mockReturnValue('win32');
-    const { getByLabelText, getByText } = renderComponent();
-    expect(getByLabelText('Core Lightning')).toBeDisabled();
-    expect(getByText('Not supported on Windows yet.')).toBeInTheDocument();
-  });
-
   describe('with valid submission', () => {
     it('should navigate to home page', async () => {
       const { createBtn, nameInput, descriptionInput, history } = renderComponent();

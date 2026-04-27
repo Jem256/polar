@@ -66,10 +66,12 @@ describe('CustomImagesTable Component', () => {
     expect(queryByText('Custom Nodes')).not.toBeInTheDocument();
   });
 
-  it('should not display incompatible custom images', () => {
-    mockOS.platform.mockReturnValueOnce('win32');
+  it('should not display custom images on unsupported platforms', () => {
+    mockOS.platform.mockReturnValueOnce('aix' as any);
     const { queryByText, nodeImages } = renderComponent();
-    expect(queryByText(nodeImages.custom[1].name)).not.toBeInTheDocument();
+    nodeImages.custom.forEach(i => {
+      expect(queryByText(i.name)).not.toBeInTheDocument();
+    });
   });
 
   it('should show the Custom Node Details modal', async () => {

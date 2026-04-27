@@ -1,8 +1,13 @@
+import os from 'os';
 import { CLightningNode, LitdNode, LndNode, TapdNode } from 'shared/types';
 import { bitcoinCredentials, defaultRepoState } from 'utils/constants';
 import { createNetwork } from 'utils/network';
 import { testManagedImages } from 'utils/tests';
 import ComposeFile from './composeFile';
+
+jest.mock('os');
+
+const mockOS = os as jest.Mocked<typeof os>;
 
 describe('ComposeFile', () => {
   let composeFile = new ComposeFile(1);
@@ -29,6 +34,7 @@ describe('ComposeFile', () => {
 
   beforeEach(() => {
     composeFile = new ComposeFile(1);
+    mockOS.platform.mockReturnValue('darwin');
   });
 
   it('should have no services initially', () => {
@@ -95,13 +101,25 @@ describe('ComposeFile', () => {
     expect(composeFile.content.services['bob']).not.toBeUndefined();
   });
 
-  it('should create the correct c-lightning docker compose values', () => {
+  it('should create the correct c-lightning docker compose values on non-Windows', () => {
+    mockOS.platform.mockReturnValue('darwin');
     composeFile.addClightning(clnNode, btcNode);
     const service = composeFile.content.services['bob'];
     expect(service.image).toContain('clightning');
     expect(service.container_name).toEqual('polar-n1-bob');
     expect(service.command).toContain('backend');
     expect(service.volumes[0]).toContain('/bob/lightningd:');
+  });
+
+  it('should create the correct c-lightning docker compose values on Windows', () => {
+    mockOS.platform.mockReturnValue('win32');
+    composeFile.addClightning(clnNode, btcNode);
+    const service = composeFile.content.services['bob'];
+    expect(service.image).toContain('clightning');
+    expect(service.container_name).toEqual('polar-n1-bob');
+    expect(service.command).toContain('backend');
+    expect(service.volumes[0]).toContain('polar-n1-bob:');
+    expect(composeFile.content.volumes).toHaveProperty('polar-n1-bob');
   });
 
   it('should have the grpc port for c-lightning', () => {
@@ -204,5 +222,14 @@ describe('ComposeFile', () => {
     expect(service.image).toContain('simln');
     expect(service.container_name).toEqual('polar-n1-simln');
     expect(service.command).toBe('');
+  });
+
+  it('should not reinitialize volumes when adding multiple c-lightning nodes on Windows', () => {
+    mockOS.platform.mockReturnValue('win32');
+    composeFile.addClightning(clnNode, btcNode);
+    const secondClnNode = { ...clnNode, name: 'carol' };
+    composeFile.addClightning(secondClnNode as CLightningNode, btcNode);
+    expect(composeFile.content.volumes).toHaveProperty('polar-n1-bob');
+    expect(composeFile.content.volumes).toHaveProperty('polar-n1-carol');
   });
 });

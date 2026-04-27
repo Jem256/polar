@@ -63,13 +63,12 @@ describe('ManagedImagesTable Component', () => {
     expect(getByText('test-lnd-command')).toBeInTheDocument();
   });
 
-  it('should not display incompatible managed images', () => {
-    mockOS.platform.mockReturnValueOnce('win32');
+  it('should not display images on unsupported platforms', () => {
+    mockOS.platform.mockReturnValueOnce('aix' as any);
     const { queryAllByText } = renderComponent();
-    // 1 is the number of each implementation in testManagedImages
-    expect(queryAllByText('polarlightning/lnd')).toHaveLength(1);
+    expect(queryAllByText('polarlightning/lnd')).toHaveLength(0);
     expect(queryAllByText('polarlightning/clightning')).toHaveLength(0);
-    expect(queryAllByText('polarlightning/bitcoind')).toHaveLength(1);
+    expect(queryAllByText('polarlightning/bitcoind')).toHaveLength(0);
   });
 
   it('should show the Customize Managed Node modal', async () => {

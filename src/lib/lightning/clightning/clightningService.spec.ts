@@ -1,6 +1,7 @@
 // import { debug } from 'electron-log';
 import fs from 'fs-extra';
 import Dockerode from 'dockerode';
+import os from 'os';
 import { Socket } from 'socket.io-client';
 import { defaultStateInfo, getNetwork } from 'utils/tests';
 import * as clightningApi from './clightningApi';
@@ -11,10 +12,12 @@ jest.mock('dockerode');
 jest.mock('./clightningApi');
 jest.mock('fs-extra');
 jest.mock('socket.io-client');
+jest.mock('os');
 
 const clightningApiMock = clightningApi as jest.Mocked<typeof clightningApi>;
 const fsMock = fs as jest.Mocked<typeof fs>;
 const mockDockerode = Dockerode as unknown as jest.Mock<Dockerode>;
+const mockOS = os as jest.Mocked<typeof os>;
 
 describe('CLightningService', () => {
   const node = getNetwork().nodes.lightning[1];
@@ -22,6 +25,7 @@ describe('CLightningService', () => {
 
   beforeEach(() => {
     clightningService = new CLightningService();
+    mockOS.platform.mockReturnValue('darwin');
   });
 
   it('should get node info', async () => {
@@ -318,8 +322,39 @@ describe('CLightningService', () => {
   });
 
   describe('waitUntilOnline', () => {
+    const listContainers = mockDockerode.prototype.listContainers as jest.Mock;
+    const getContainer = mockDockerode.prototype.getContainer as jest.Mock;
+    const dockerExecOutput = `
+      lightning-cli --network regtest createrune
+      exit
+      [?2004hclightning@bob:/$ lightning-cli --network regtest createrune
+      [?2004l
+      {
+        "rune": "TGrQQlUxyhs_Ek6XSqyAQS7wLGqQqpdkgvZ5b-ttttY9MA==",
+        "unique_id": "0",
+      }
+      [?2004hclightning@bob:/$ exit
+      [?2004l
+      exit
+    `;
+
     beforeEach(() => {
       fsMock.pathExists = jest.fn().mockResolvedValue(true);
+
+      listContainers.mockResolvedValue([
+        { Id: '123', Names: [`/polar-n${node.networkId}-${node.name}`] },
+      ]);
+      getContainer.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({
+          start: jest.fn().mockResolvedValue({
+            on: jest.fn().mockImplementation((event: string, cb: (arg: any) => void) => {
+              cb(Buffer.from(dockerExecOutput));
+            }),
+            write: jest.fn(),
+            destroy: jest.fn(),
+          }),
+        }),
+      });
     });
 
     it('should throw an error for an incorrect node', async () => {
@@ -456,23 +491,25 @@ describe('CLightningService', () => {
     });
 
     it('should throw an error if the container is not found', async () => {
-      listContainers.mockResolvedValueOnce([]);
-      expect(clightningService.waitUntilOnline(node, 0.1, 0.3)).rejects.toThrow(
+      listContainers.mockResolvedValue([]);
+      await expect(clightningService.waitUntilOnline(node, 0.1, 0.3)).rejects.toThrow(
         'Docker container not found: polar-n1-bob',
       );
+    }, 1000);
 
-      getContainer.mockReturnValueOnce(undefined);
-      expect(clightningService.waitUntilOnline(node, 0.1, 0.3)).rejects.toThrow(
+    it('should throw an error if the container is undefined', async () => {
+      getContainer.mockReturnValue(undefined);
+      await expect(clightningService.waitUntilOnline(node, 0.1, 0.3)).rejects.toThrow(
         'Docker container not found: polar-n1-bob',
       );
-    });
+    }, 1000);
 
     it('should throw an error if there no rune in the output', async () => {
       clightningApiMock.httpPost.mockResolvedValue(infoResponse);
       streamMock.mockImplementation((event: string, cb: (arg: any) => void) => {
         cb(Buffer.from('no rune here'));
       });
-      expect(clightningService.waitUntilOnline(node, 0.1, 0.3)).rejects.toThrow(
+      await expect(clightningService.waitUntilOnline(node, 0.1, 0.3)).rejects.toThrow(
         'Failed to create CLN rune',
       );
     });
@@ -487,6 +524,123 @@ describe('CLightningService', () => {
 
       expect(listContainers).toHaveBeenCalledTimes(1);
       expect(clightningApiMock.httpPost).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('copyCertsFromContainer', () => {
+    const listContainers = mockDockerode.prototype.listContainers as jest.Mock;
+    const getContainer = mockDockerode.prototype.getContainer as jest.Mock;
+    const streamMock = jest.fn();
+    const dockerExecOutput = `
+      lightning-cli --network regtest createrune
+      exit
+      [?2004hclightning@bob:/$ lightning-cli --network regtest createrune
+      [?2004l
+      {
+        "rune": "TGrQQlUxyhs_Ek6XSqyAQS7wLGqQqpdkgvZ5b-ttttY9MA==",
+        "unique_id": "0",
+      }
+      [?2004hclightning@bob:/$ exit
+      [?2004l
+      exit
+    `;
+    const pemOutput = `
+    cat /home/clightning/.lightning/regtest/ca.pem
+    -----BEGIN CERTIFICATE-----
+    MIIBcjCCARigAwIBAgIQ
+    -----END CERTIFICATE-----
+    exit
+  `;
+
+    beforeEach(() => {
+      mockOS.platform.mockReturnValue('win32');
+      listContainers.mockResolvedValue([
+        { Id: '123', Names: [`/polar-n${node.networkId}-${node.name}`] },
+      ]);
+      getContainer.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({
+          start: jest.fn().mockResolvedValue({
+            on: streamMock,
+            write: jest.fn(),
+            destroy: jest.fn(),
+          }),
+        }),
+      });
+      clightningApiMock.httpPost.mockResolvedValue({ binding: [] });
+    });
+
+    it('should skip cert copy when container is not found', async () => {
+      listContainers
+        .mockResolvedValueOnce([
+          { Id: '123', Names: [`/polar-n${node.networkId}-${node.name}`] },
+        ])
+        .mockResolvedValueOnce([]);
+      streamMock.mockImplementation((event: string, cb: (arg: any) => void) => {
+        cb(Buffer.from(dockerExecOutput));
+      });
+      await expect(
+        clightningService.waitUntilOnline(node, 0.1, 0.3),
+      ).resolves.not.toThrow();
+    });
+
+    it('should copy PEM content when found', async () => {
+      let callCount = 0;
+      streamMock.mockImplementation((event: string, cb: (arg: any) => void) => {
+        // First call is createRune (needs rune output), rest are copyCerts (need PEM)
+        cb(Buffer.from(callCount++ === 0 ? dockerExecOutput : pemOutput));
+      });
+      await expect(
+        clightningService.waitUntilOnline(node, 0.1, 0.3),
+      ).resolves.not.toThrow();
+    });
+
+    it('should log when exec fails', async () => {
+      getContainer
+        .mockReturnValueOnce({
+          exec: jest.fn().mockResolvedValue({
+            start: jest.fn().mockResolvedValue({
+              on: jest
+                .fn()
+                .mockImplementation((event: string, cb: (arg: any) => void) => {
+                  cb(Buffer.from(dockerExecOutput));
+                }),
+              write: jest.fn(),
+              destroy: jest.fn(),
+            }),
+          }),
+        })
+        .mockReturnValue({
+          exec: jest.fn().mockRejectedValue(new Error('exec-failed')),
+        });
+      await expect(
+        clightningService.waitUntilOnline(node, 0.1, 0.3),
+      ).resolves.not.toThrow();
+    });
+
+    it('should log when no PEM content is found', async () => {
+      let callCount = 0;
+      streamMock.mockImplementation((event: string, cb: (arg: any) => void) => {
+        cb(Buffer.from(callCount++ === 0 ? dockerExecOutput : 'no pem here'));
+      });
+      await expect(
+        clightningService.waitUntilOnline(node, 0.1, 0.3),
+      ).resolves.not.toThrow();
+    });
+
+    it('should skip cert files with undefined host paths', async () => {
+      const nodeWithMissingPath = {
+        ...node,
+        paths: {
+          ...(node as any).paths,
+          tlsCert: undefined,
+        },
+      };
+      streamMock.mockImplementation((event: string, cb: (arg: any) => void) => {
+        cb(Buffer.from(dockerExecOutput));
+      });
+      await expect(
+        clightningService.waitUntilOnline(nodeWithMissingPath as any, 0.1, 0.3),
+      ).resolves.not.toThrow();
     });
   });
 });
