@@ -155,15 +155,6 @@ describe('ImportNetwork component', () => {
     expect(await findByText(msg)).toBeInTheDocument();
   });
 
-  it('should throw if the network is not supported', async () => {
-    osMock.platform.mockReturnValue('win32');
-    const { findByText, fileInput } = renderComponent();
-    fireEvent.change(fileInput);
-    expect(await findByText("Could not import 'file.zip'")).toBeInTheDocument();
-    const msg = 'Importing networks with c-lightning nodes is not supported on windows';
-    expect(await findByText(msg)).toBeInTheDocument();
-  });
-
   it('should throw for an unknown LN implementation', async () => {
     network.nodes.lightning[0].implementation = 'asdf' as any;
     filesMock.read.mockResolvedValue(JSON.stringify({ network, chart }));
@@ -197,5 +188,14 @@ describe('ImportNetwork component', () => {
     expect(await findByText("Could not import 'file.zip'")).toBeInTheDocument();
     const msg = "Cannot import unknown node implementation 'asdf'";
     expect(await findByText(msg)).toBeInTheDocument();
+  });
+
+  it('should throw if a lightning node is not supported on the current platform', async () => {
+    osMock.platform.mockReturnValue('aix' as any);
+    filesMock.read.mockResolvedValue(JSON.stringify({ network, chart }));
+    const { findByText, fileInput } = renderComponent();
+    fireEvent.change(fileInput);
+    expect(await findByText("Could not import 'file.zip'")).toBeInTheDocument();
+    expect(await findByText(/is not supported on unknown/)).toBeInTheDocument();
   });
 });

@@ -92,21 +92,18 @@ describe('DefaultSidebar Component', () => {
     expect(store.getState().modals.imageUpdates.visible).toBe(true);
   });
 
-  it('should not display c-lightning nodes on Windows', () => {
-    mockOS.platform.mockReturnValue('win32');
-    const { queryByText } = renderComponent();
-    expect(queryByText('c-lightning')).not.toBeInTheDocument();
-  });
-
   it('should display custom images', () => {
     const { getByText } = renderComponent(Status.Stopped, customImages);
     expect(getByText(`My Test Image`)).toBeInTheDocument();
   });
 
-  it('should not display incompatible custom images', () => {
-    mockOS.platform.mockReturnValue('win32');
+  it('should not display nodes on unsupported platforms', () => {
+    mockOS.platform.mockReturnValue('aix' as any);
     const { queryByText } = renderComponent(Status.Stopped, customImages);
-    expect(queryByText(`My Test Image`)).not.toBeInTheDocument();
+    // managed nodes filtered out
+    expect(queryByText(`LND v${lndLatest}`)).not.toBeInTheDocument();
+    // custom nodes filtered out
+    expect(queryByText('My Test Image')).not.toBeInTheDocument();
   });
 
   it('should display a draggable LND node', () => {
