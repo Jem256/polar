@@ -72,6 +72,7 @@ export const injections: StoreInjections = {
     startSimulation: jest.fn(),
     stopSimulation: jest.fn(),
     removeSimulation: jest.fn(),
+    copyVolumeToHost: jest.fn(),
   },
   repoService: {
     load: jest.fn(),

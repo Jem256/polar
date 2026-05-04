@@ -1103,4 +1103,70 @@ describe('DockerService', () => {
       expect(clnSimNode?.client_key).toBeDefined();
     });
   });
+
+  describe('copyVolumeToHost', () => {
+    const createContainer = mockDockerode.prototype.createContainer as jest.Mock;
+    let clnNode: CLightningNode;
+    let mockContainer: {
+      start: jest.Mock;
+      wait: jest.Mock;
+      logs: jest.Mock;
+      remove: jest.Mock;
+    };
+
+    beforeEach(() => {
+      mockOS.platform.mockReturnValue('win32');
+      clnNode = network.nodes.lightning.find(
+        n => n.implementation === 'c-lightning',
+      ) as CLightningNode;
+
+      mockContainer = {
+        start: jest.fn().mockResolvedValue(undefined),
+        wait: jest.fn().mockResolvedValue({ StatusCode: 0 }),
+        logs: jest.fn().mockResolvedValue(Buffer.from('')),
+        remove: jest.fn().mockResolvedValue(undefined),
+      };
+      createContainer.mockResolvedValue(mockContainer);
+    });
+
+    it('should skip on non-Windows platforms', async () => {
+      mockOS.platform.mockReturnValue('darwin');
+      await dockerService.copyVolumeToHost(clnNode);
+      expect(createContainer).not.toHaveBeenCalled();
+    });
+
+    it('should create a helper container with correct volume bindings', async () => {
+      await dockerService.copyVolumeToHost(clnNode);
+      expect(createContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          HostConfig: expect.objectContaining({
+            Binds: expect.arrayContaining([
+              expect.stringContaining(':/source:ro'),
+              expect.stringContaining(':/dest'),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('should throw if the container exits with a non-zero status code', async () => {
+      mockContainer.wait.mockResolvedValue({ StatusCode: 1 });
+      mockContainer.logs.mockResolvedValue(Buffer.from('tar: error'));
+      await expect(dockerService.copyVolumeToHost(clnNode)).rejects.toThrow(
+        /Failed to copy CLN volume.*exit 1/,
+      );
+    });
+
+    it('should not throw if helper container removal fails', async () => {
+      mockContainer.remove.mockRejectedValue(new Error('remove-failed'));
+      await expect(dockerService.copyVolumeToHost(clnNode)).resolves.not.toThrow();
+    });
+
+    it('should throw and still attempt cleanup if createContainer fails', async () => {
+      createContainer.mockRejectedValue(new Error('docker-unavailable'));
+      await expect(dockerService.copyVolumeToHost(clnNode)).rejects.toThrow(
+        'docker-unavailable',
+      );
+    });
+  });
 });

@@ -5,6 +5,7 @@ import { Action, action, Computed, computed, Thunk, thunk } from 'easy-peasy';
 import {
   AnyNode,
   BitcoinNode,
+  CLightningNode,
   CommonNode,
   LightningNode,
   LitdNode,
@@ -983,34 +984,46 @@ const networkModel: NetworkModel = {
     await actions.save();
     await getStoreActions().app.clearAppCache();
   }),
-  exportNetwork: thunk(async (actions, { id }, { getState, getStoreState }) => {
-    const { networks } = getState();
-    const network = networks.find(n => n.id === id);
-    if (!network) throw new Error(l('networkByIdErr', { networkId: id }));
-    // only export stopped networks
-    if (![Status.Error, Status.Stopped].includes(network.status)) {
-      throw new Error(l('exportBadStatus'));
-    }
-    const defaultName = network.name.replace(/\s/g, '-').replace(/[^0-9a-zA-Z-._]/g, '');
-    const options: SaveDialogOptions = {
-      title: l('exportTitle', { name: network.name }),
-      defaultPath: `${defaultName}.polar.zip`,
-      properties: ['promptToCreate', 'createDirectory'],
-    } as any; // types are broken, but 'properties' allow us to customize how the dialog performs
-    const { filePath } = await remote.dialog.showSaveDialog(options);
+  exportNetwork: thunk(
+    async (actions, { id }, { getState, getStoreState, injections }) => {
+      const { networks } = getState();
+      const network = networks.find(n => n.id === id);
+      if (!network) throw new Error(l('networkByIdErr', { networkId: id }));
+      // only export stopped networks
+      if (![Status.Error, Status.Stopped].includes(network.status)) {
+        throw new Error(l('exportBadStatus'));
+      }
+      const defaultName = network.name
+        .replace(/\s/g, '-')
+        .replace(/[^0-9a-zA-Z-._]/g, '');
+      const options: SaveDialogOptions = {
+        title: l('exportTitle', { name: network.name }),
+        defaultPath: `${defaultName}.polar.zip`,
+        properties: ['promptToCreate', 'createDirectory'],
+      } as any; // types are broken, but 'properties' allow us to customize how the dialog performs
+      const { filePath } = await remote.dialog.showSaveDialog(options);
 
-    // user aborted dialog
-    if (!filePath) {
-      info('User aborted network export');
-      return;
-    }
+      // user aborted dialog
+      if (!filePath) {
+        info('User aborted network export');
+        return;
+      }
 
-    info(`exporting network '${network.name}' to '${filePath}'`);
-    const { activeChart } = getStoreState().designer;
-    await zipNetwork(network, activeChart, filePath);
-    info('exported network successfully');
-    return filePath;
-  }),
+      // on windows, CLN data is not visible on the host. Copy the data into
+      // the host folder before zipping.
+      for (const ln of network.nodes.lightning) {
+        if (ln.implementation === 'c-lightning') {
+          await injections.dockerService.copyVolumeToHost(ln as CLightningNode);
+        }
+      }
+
+      info(`exporting network '${network.name}' to '${filePath}'`);
+      const { activeChart } = getStoreState().designer;
+      await zipNetwork(network, activeChart, filePath);
+      info('exported network successfully');
+      return filePath;
+    },
+  ),
   importNetwork: thunk(
     async (actions, path, { getStoreState, getStoreActions, injections }) => {
       const { networks } = getStoreState().network;

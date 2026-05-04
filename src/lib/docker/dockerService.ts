@@ -1,7 +1,7 @@
 import { remote } from 'electron';
 import { debug, info } from 'electron-log';
 import { copy, ensureDir } from 'fs-extra';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { v2 as compose } from 'docker-compose';
 import Dockerode from 'dockerode';
 import yaml from 'js-yaml';
@@ -31,7 +31,7 @@ import { APP_VERSION, dockerConfigs, eclairCredentials } from 'utils/constants';
 import { exists, read, renameFile, rm, write } from 'utils/files';
 import { migrateNetworksFile } from 'utils/migrations';
 import { getContainerName } from 'utils/network';
-import { isLinux, isMac } from 'utils/system';
+import { isLinux, isMac, isWindows } from 'utils/system';
 import ComposeFile from './composeFile';
 
 let dockerInst: Dockerode | undefined;
@@ -551,6 +551,62 @@ class DockerService implements DockerLibrary {
     info(`Removing stopped docker containers`);
     result = await this.execute(compose.rm as any, this.getArgs(network), 'simln');
     info(`Simulation removed:\n ${result.out || result.err}`);
+  }
+
+  /**
+   * Copies the CLN named volume's contents to the host filesystem on Windows.
+   *
+   * On Windows, CLN's data directory is a named Docker volume, not a host bind
+   * mount, so the host folder doesn't contain hsm_secret, the channel database,
+   * or the gossip store. Network export reads from the host folder, so without
+   * this copy the exported zip is missing all node state.
+   */
+  async copyVolumeToHost(node: CLightningNode) {
+    if (!isWindows()) return;
+
+    const log = (...args: any[]) => debug(`DockerService ${node.name}:`, ...args);
+
+    // node.paths.rune is volumes/c-lightning/<name>/lightningd/admin.rune
+    const hostDataDir = dirname(node.paths.rune).replace(/\\/g, '/');
+    await ensureDir(hostDataDir);
+
+    const containerName = getContainerName(node);
+    const volumeName = `polar-network-${node.networkId}_${containerName}`;
+    const image =
+      node.docker.image || `${dockerConfigs['c-lightning'].imageName}:${node.version}`;
+
+    log(`copying volume '${volumeName}' to host '${hostDataDir}'`);
+
+    const docker = await getDocker();
+    let helper: Dockerode.Container | undefined;
+    try {
+      helper = await docker.createContainer({
+        Image: image,
+        Entrypoint: ['/bin/sh', '-c'],
+        Cmd: [
+          'rm -f /dest/regtest/lightning-rpc && ' +
+            'cd /source && tar --exclude=lightning-rpc -cf - . | tar -xf - -C /dest',
+        ],
+        HostConfig: {
+          Binds: [`${volumeName}:/source:ro`, `${hostDataDir}:/dest`],
+        },
+      });
+      await helper.start();
+      const result = await helper.wait();
+      if (result.StatusCode !== 0) {
+        const logBuf = await helper.logs({ stdout: true, stderr: true, follow: false });
+        throw new Error(
+          `Failed to copy CLN volume '${volumeName}': exit ${result.StatusCode}. ` +
+            `Output: ${logBuf.toString().trim()}`,
+        );
+      }
+    } finally {
+      if (helper) {
+        await helper
+          .remove({ force: true })
+          .catch(err => log(`failed to remove helper container: ${err.message}`));
+      }
+    }
   }
 }
 
