@@ -9,13 +9,13 @@ import * as ipc from 'lib/ipc/ipcService';
 import { initChartFromNetwork } from 'utils/chart';
 import { defaultRepoState } from 'utils/constants';
 import {
+  bitcoinServiceMock,
   getNetwork,
   injections,
   lightningServiceMock,
   renderWithProviders,
   suppressConsoleErrors,
   testCustomImages,
-  bitcoinServiceMock,
 } from 'utils/tests';
 import NetworkView from './NetworkView';
 

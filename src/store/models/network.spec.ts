@@ -32,12 +32,20 @@ jest.mock('utils/files', () => ({
   rm: jest.fn(),
 }));
 jest.mock('utils/async');
+jest.mock('utils/network', () => ({
+  ...jest.requireActual('utils/network'),
+  zipNetwork: jest.fn().mockResolvedValue(undefined),
+}));
 
 const asyncUtilMock = asyncUtil as jest.Mocked<typeof asyncUtil>;
 const filesMock = files as jest.Mocked<typeof files>;
 const logMock = log as jest.Mocked<typeof log>;
 const detectPortMock = detectPort as jest.Mock;
 const electronMock = electron as jest.Mocked<typeof electron>;
+const dockerServiceMock = injections.dockerService as jest.Mocked<
+  typeof injections.dockerService
+>;
+const dialogMock = electron.remote.dialog as jest.Mocked<typeof electron.remote.dialog>;
 
 describe('Network model', () => {
   const rootModel = {
@@ -1341,6 +1349,35 @@ describe('Network model', () => {
     it('should fail to export with an invalid id', async () => {
       const { exportNetwork } = store.getActions().network;
       await expect(exportNetwork({ id: 10 })).rejects.toThrow();
+    });
+
+    it('should copy CLN volume data to host before exporting', async () => {
+      dialogMock.showSaveDialog.mockResolvedValue({
+        filePath: 'test.polar.zip',
+      } as any);
+      const { addNetwork, exportNetwork, setStatus } = store.getActions().network;
+      await addNetwork(addNetworkArgs);
+      const network = firstNetwork();
+      setStatus({ id: network.id, status: Status.Stopped });
+
+      await exportNetwork({ id: network.id });
+
+      const clnNode = network.nodes.lightning.find(
+        n => n.implementation === 'c-lightning',
+      );
+      expect(dockerServiceMock.copyVolumeToHost).toHaveBeenCalledWith(clnNode);
+    });
+
+    it('should not copy CLN volume data if the user aborts the export dialog', async () => {
+      dialogMock.showSaveDialog.mockResolvedValue({} as any);
+      const { addNetwork, exportNetwork, setStatus } = store.getActions().network;
+      await addNetwork(addNetworkArgs);
+      const network = firstNetwork();
+      setStatus({ id: network.id, status: Status.Stopped });
+
+      await exportNetwork({ id: network.id });
+
+      expect(dockerServiceMock.copyVolumeToHost).not.toHaveBeenCalled();
     });
 
     it('should autoMine blocks when autoMine enabled', async () => {
