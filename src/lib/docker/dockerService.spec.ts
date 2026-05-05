@@ -1169,4 +1169,43 @@ describe('DockerService', () => {
       );
     });
   });
+
+  describe('removeCLNVolume', () => {
+    const getVolume = mockDockerode.prototype.getVolume as jest.Mock;
+    const mockVolume = { remove: jest.fn() };
+    let clnNode: CLightningNode;
+
+    beforeEach(() => {
+      clnNode = network.nodes.lightning.filter(
+        n => n.implementation === 'c-lightning',
+      )[0] as CLightningNode;
+      mockOS.platform.mockReturnValue('win32');
+      getVolume.mockReturnValue(mockVolume);
+      mockVolume.remove.mockResolvedValue(undefined);
+    });
+
+    it('should skip on non-Windows platforms', async () => {
+      mockOS.platform.mockReturnValue('darwin');
+      await dockerService.removeCLNVolume(clnNode);
+      expect(getVolume).not.toHaveBeenCalled();
+    });
+
+    it('should remove the named volume', async () => {
+      await dockerService.removeCLNVolume(clnNode);
+      const containerName = `polar-n${clnNode.networkId}-${clnNode.name}`;
+      const volumeName = `polar-network-${clnNode.networkId}_${containerName}`;
+      expect(getVolume).toHaveBeenCalledWith(volumeName);
+      expect(mockVolume.remove).toHaveBeenCalled();
+    });
+
+    it('should not throw if the volume does not exist', async () => {
+      mockVolume.remove.mockRejectedValue({ statusCode: 404 });
+      await expect(dockerService.removeCLNVolume(clnNode)).resolves.not.toThrow();
+    });
+
+    it('should not throw if removal fails for another reason', async () => {
+      mockVolume.remove.mockRejectedValue(new Error('permission denied'));
+      await expect(dockerService.removeCLNVolume(clnNode)).resolves.not.toThrow();
+    });
+  });
 });

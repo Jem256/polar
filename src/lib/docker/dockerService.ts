@@ -608,6 +608,31 @@ class DockerService implements DockerLibrary {
       }
     }
   }
+
+  /**
+   * Removes the CLN named Docker volume on Windows.
+   */
+  async removeCLNVolume(node: CLightningNode) {
+    if (!isWindows()) return;
+
+    const log = (...args: any[]) => debug(`CLightningService ${node.name}:`, ...args);
+
+    const containerName = getContainerName(node);
+    const volumeName = `polar-network-${node.networkId}_${containerName}`;
+
+    try {
+      const docker = await getDocker();
+      await docker.getVolume(volumeName).remove();
+      log(`removed named volume '${volumeName}'`);
+    } catch (err: any) {
+      // 404 = volume doesn't exist (node never started, or already removed)
+      if (err.statusCode === 404) {
+        log(`named volume '${volumeName}' did not exist, nothing to remove`);
+      } else {
+        log(`failed to remove named volume '${volumeName}': ${err.message}`);
+      }
+    }
+  }
 }
 
 export default new DockerService();

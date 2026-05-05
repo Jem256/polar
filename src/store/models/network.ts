@@ -520,6 +520,10 @@ const networkModel: NetworkModel = {
       await actions.save();
       // delete the docker volume data from disk
       await rm(nodePath(network, node.implementation, node.name));
+      // on Windows, CLN nodes also have a named Docker volume to clean up
+      if (node.implementation === 'c-lightning') {
+        await injections.dockerService.removeCLNVolume(node as CLightningNode);
+      }
       // sync the chart
       await getStoreActions().designer.syncChart(network);
     },
@@ -959,7 +963,7 @@ const networkModel: NetworkModel = {
     actions.setNetworks(networks);
     await actions.save();
   }),
-  remove: thunk(async (actions, networkId, { getState, getStoreActions }) => {
+  remove: thunk(async (actions, networkId, { getState, getStoreActions, injections }) => {
     const { networks } = getState();
     const network = networks.find(n => n.id === networkId);
     if (!network) throw new Error(l('networkByIdErr', { networkId }));
@@ -970,6 +974,12 @@ const networkModel: NetworkModel = {
     ];
     if (statuses.find(n => n !== Status.Stopped)) {
       await actions.stop(networkId);
+    }
+    // remove any named Docker volumes (CLN on Windows)
+    for (const ln of network.nodes.lightning) {
+      if (ln.implementation === 'c-lightning') {
+        await injections.dockerService.removeCLNVolume(ln as CLightningNode);
+      }
     }
     await rm(network.path);
     const newNetworks = networks.filter(n => n.id !== networkId);
