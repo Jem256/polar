@@ -144,6 +144,7 @@ export interface DockerLibrary {
   stopSimulation: (network: Network) => Promise<void>;
   removeSimulation: (network: Network) => Promise<void>;
   copyVolumeToHost: (node: CLightningNode) => Promise<void>;
+  removeCLNVolume: (node: CLightningNode) => Promise<void>;
 }
 
 export interface RepoServiceInjection {
