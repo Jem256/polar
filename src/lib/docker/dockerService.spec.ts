@@ -1,4 +1,5 @@
 import * as electron from 'electron';
+import { info } from 'electron-log';
 import * as fs from 'fs-extra';
 import { join } from 'path';
 import { IChart } from '@mrblenny/react-flow-chart';
@@ -1206,6 +1207,104 @@ describe('DockerService', () => {
     it('should not throw if removal fails for another reason', async () => {
       mockVolume.remove.mockRejectedValue(new Error('permission denied'));
       await expect(dockerService.removeCLNVolume(clnNode)).resolves.not.toThrow();
+    });
+  });
+
+  describe('renameNodeDir for CLN on Windows', () => {
+    const createContainer = mockDockerode.prototype.createContainer as jest.Mock;
+    const createVolume = mockDockerode.prototype.createVolume as jest.Mock;
+    const getVolume = mockDockerode.prototype.getVolume as jest.Mock;
+    let mockCopyContainer: { start: jest.Mock; wait: jest.Mock; remove: jest.Mock };
+    let clnNode: CLightningNode;
+
+    beforeEach(() => {
+      mockOS.platform.mockReturnValue('win32');
+      clnNode = network.nodes.lightning.find(
+        n => n.implementation === 'c-lightning',
+      ) as CLightningNode;
+
+      mockCopyContainer = {
+        start: jest.fn().mockResolvedValue(undefined),
+        wait: jest.fn().mockResolvedValue({ StatusCode: 0 }),
+        remove: jest.fn().mockResolvedValue(undefined),
+      };
+      createContainer.mockResolvedValue(mockCopyContainer);
+      createVolume.mockResolvedValue(undefined);
+      getVolume.mockReturnValue({ remove: jest.fn().mockResolvedValue(undefined) });
+
+      filesMock.exists.mockResolvedValue(false);
+    });
+
+    it('should create a new volume with the correct name', async () => {
+      await dockerService.renameNodeDir(network, clnNode, 'new-bob');
+      const newContainerName = `polar-n${network.id}-new-bob`;
+      const newVolumeName = `polar-network-${network.id}_${newContainerName}`;
+      expect(createVolume).toHaveBeenCalledWith({ Name: newVolumeName });
+    });
+
+    it('should remove the copy container even if the copy fails', async () => {
+      mockCopyContainer.wait.mockResolvedValue({ StatusCode: 1 });
+      await expect(
+        dockerService.renameNodeDir(network, clnNode, 'new-bob'),
+      ).rejects.toThrow();
+      expect(mockCopyContainer.remove).toHaveBeenCalledWith({ force: true });
+    });
+
+    it('should throw if cleanup itself fails', async () => {
+      const removeNewVolume = jest.fn().mockRejectedValue(new Error('volume in use'));
+      const newContainerName = `polar-n${network.id}-new-bob`;
+      const newVolumeName = `polar-network-${network.id}_${newContainerName}`;
+
+      getVolume.mockImplementation((name: string) =>
+        name === newVolumeName
+          ? { remove: removeNewVolume }
+          : { remove: jest.fn().mockResolvedValue(undefined) },
+      );
+      mockCopyContainer.wait.mockResolvedValue({ StatusCode: 1 });
+
+      await expect(
+        dockerService.renameNodeDir(network, clnNode, 'new-bob'),
+      ).rejects.toThrow('Volume copy failed with exit code 1');
+      expect(removeNewVolume).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw if the copy container exits with a non-zero status code', async () => {
+      mockCopyContainer.wait.mockResolvedValue({ StatusCode: 1 });
+      await expect(
+        dockerService.renameNodeDir(network, clnNode, 'new-bob'),
+      ).rejects.toThrow('Volume copy failed with exit code 1');
+    });
+
+    it('should delete stale CLN cert files before renaming', async () => {
+      filesMock.exists.mockResolvedValue(true);
+      await dockerService.renameNodeDir(network, clnNode, 'new-bob');
+      expect(filesMock.rm).toHaveBeenCalledWith(clnNode.paths.tlsCert);
+      expect(filesMock.rm).toHaveBeenCalledWith(clnNode.paths.tlsClientCert);
+      expect(filesMock.rm).toHaveBeenCalledWith(clnNode.paths.tlsClientKey);
+    });
+
+    it('should log and not throw if removing the old volume after rename fails', async () => {
+      const oldContainerName = `polar-n${network.id}-${clnNode.name}`;
+      const oldVolumeName = `polar-network-${network.id}_${oldContainerName}`;
+      const removeError = new Error('volume still in use');
+      getVolume.mockImplementation((name: string) =>
+        name === oldVolumeName
+          ? { remove: jest.fn().mockRejectedValue(removeError) }
+          : { remove: jest.fn().mockResolvedValue(undefined) },
+      );
+
+      await dockerService.renameNodeDir(network, clnNode, 'new-bob');
+
+      expect(info).toHaveBeenCalledWith(
+        `Failed to remove old volume ${oldVolumeName}: ${removeError}`,
+      );
+    });
+
+    it('should not run CLN volume logic for a CLN node on non-Windows', async () => {
+      mockOS.platform.mockReturnValue('darwin');
+      await dockerService.renameNodeDir(network, clnNode, 'new-bob');
+      expect(createVolume).not.toHaveBeenCalled();
+      expect(createContainer).not.toHaveBeenCalled();
     });
   });
 });
