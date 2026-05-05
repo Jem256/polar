@@ -270,6 +270,22 @@ class DockerService implements DockerLibrary {
       if (await exists(keyPath)) await rm(keyPath);
     }
 
+    // handle CLN named volume on Windows
+    if (node.implementation === 'c-lightning' && isWindows()) {
+      // delete stale certs so they're re-fetched from container after restart
+      for (const certPath of [
+        (node as CLightningNode).paths.tlsCert,
+        (node as CLightningNode).paths.tlsClientCert,
+        (node as CLightningNode).paths.tlsClientKey,
+      ]) {
+        if (certPath && (await exists(certPath))) await rm(certPath);
+      }
+
+      await this.renameCLNVolume(network, node as CLightningNode, newName);
+      if (await exists(oldPath)) await renameFile(oldPath, newPath);
+      return;
+    }
+
     if (await exists(oldPath)) renameFile(oldPath, newPath);
   }
 
@@ -631,6 +647,64 @@ class DockerService implements DockerLibrary {
       } else {
         log(`failed to remove named volume '${volumeName}': ${err.message}`);
       }
+    }
+  }
+
+  /**
+   * rename CLN named volume on windows
+   * @param network the network containing the node
+   * @param node the node to be renamed
+   * @param newName the new name for the node and directory
+   */
+  private async renameCLNVolume(network: Network, node: CLightningNode, newName: string) {
+    const docker = await getDocker();
+    const networkName = `polar-network-${network.id}`;
+    const oldContainerName = getContainerName(node);
+    const newContainerName = `polar-n${network.id}-${newName}`;
+    const oldVolumeName = `${networkName}_${oldContainerName}`;
+    const newVolumeName = `${networkName}_${newContainerName}`;
+
+    info(`Renaming CLN Docker volume: ${oldVolumeName} → ${newVolumeName}`);
+
+    const clnImage =
+      node.docker.image || `${dockerConfigs['c-lightning'].imageName}:${node.version}`;
+    await docker.createVolume({ Name: newVolumeName });
+    const copyContainer = await docker.createContainer({
+      Image: clnImage,
+      Cmd: ['sh', '-c', `cp -a /src/. /dst/`],
+      HostConfig: {
+        Binds: [`${oldVolumeName}:/src:ro`, `${newVolumeName}:/dst`],
+      },
+    });
+
+    let copySuccessful = false;
+    try {
+      await copyContainer.start({});
+      const result = await copyContainer.wait();
+      info(`CLN volume copy exited with status: ${result.StatusCode}`);
+      if (result.StatusCode !== 0) {
+        throw new Error(`Volume copy failed with exit code ${result.StatusCode}`);
+      }
+      copySuccessful = true;
+    } finally {
+      await copyContainer.remove({ force: true });
+      if (!copySuccessful) {
+        try {
+          await docker.getVolume(newVolumeName).remove();
+        } catch (e) {
+          info(`Failed to clean up new volume ${newVolumeName}: ${e}`);
+        }
+      }
+    }
+
+    info(`CLN volume rename complete: ${oldVolumeName} → ${newVolumeName}`);
+
+    // remove the old volume now that data has been copied
+    try {
+      await docker.getVolume(oldVolumeName).remove();
+      info(`Removed old CLN volume ${oldVolumeName}`);
+    } catch (e) {
+      info(`Failed to remove old volume ${oldVolumeName}: ${e}`);
     }
   }
 }
