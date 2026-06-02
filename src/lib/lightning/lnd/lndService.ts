@@ -4,7 +4,7 @@ import { PendingChannel } from 'shared/lndDefaults';
 import { LightningNode, LndNode, OpenChannelOptions } from 'shared/types';
 import * as PLN from 'lib/lightning/types';
 import { LightningService } from 'types';
-import { waitFor } from 'utils/async';
+import { AbortWaitError, waitFor } from 'utils/async';
 import { lndProxyClient as proxy } from './';
 import { mapOpenChannel, mapPendingChannel } from './mappers';
 
@@ -218,6 +218,34 @@ class LndService implements LightningService {
     };
   }
 
+  async getWalletState(node: LightningNode): Promise<LND.WalletState> {
+    const res = await proxy.getState(this.cast(node));
+    return res.state;
+  }
+
+  async genSeed(node: LightningNode): Promise<string[]> {
+    const res = await proxy.genSeed(this.cast(node));
+    return res.cipherSeedMnemonic;
+  }
+
+  async initWallet(
+    node: LightningNode,
+    password: string,
+    mnemonic: string[],
+  ): Promise<Buffer> {
+    const res = await proxy.initWallet(this.cast(node), {
+      walletPassword: Buffer.from(password, 'utf-8'),
+      cipherSeedMnemonic: mnemonic,
+    });
+    return res.adminMacaroon;
+  }
+
+  async unlockWallet(node: LightningNode, password: string): Promise<void> {
+    await proxy.unlockWallet(this.cast(node), {
+      walletPassword: Buffer.from(password, 'utf-8'),
+    });
+  }
+
   /**
    * Helper function to continually query the LND node until a successful
    * response is received or it times out
@@ -229,6 +257,16 @@ class LndService implements LightningService {
   ): Promise<void> {
     return waitFor(
       async () => {
+        const state = await this.getWalletState(node);
+        if (state === 'LOCKED' || state === 'NON_EXISTING') {
+          // node is running but needs user action
+          throw new AbortWaitError(
+            state === 'LOCKED' ? 'wallet-locked' : 'wallet-not-initialized',
+          );
+        }
+        if (state !== 'RPC_ACTIVE' && state !== 'SERVER_ACTIVE') {
+          throw new Error(`waiting for RPC_ACTIVE, current state: ${state}`);
+        }
         await this.getInfo(node);
       },
       interval,
