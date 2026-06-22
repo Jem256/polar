@@ -8,6 +8,7 @@ import {
   CommonNode,
   LightningNode,
   LitdNode,
+  LndNode,
   NodeImplementation,
   Status,
   TapdNode,
@@ -52,6 +53,7 @@ interface AddNetworkArgs {
   litdNodes: number;
   customNodes: Record<string, number>;
   manualMineCount: number;
+  hasSeedBackup?: boolean;
 }
 
 export interface AutoMinerModel {
@@ -331,6 +333,7 @@ const networkModel: NetworkModel = {
         customImages,
         basePorts: settings.basePorts,
         manualMineCount: 6,
+        hasSeedBackup: payload.hasSeedBackup,
       });
       actions.add(network);
       const { networks } = getState();
@@ -447,6 +450,9 @@ const networkModel: NetworkModel = {
           break;
         default:
           throw new Error(`Cannot add unknown node type '${type}' to the network`);
+      }
+      if (network.hasSeedBackup && node.implementation === 'LND') {
+        (node as LndNode).hasSeedBackup = true;
       }
       actions.setNetworks([...networks]);
       await actions.save();
@@ -847,6 +853,13 @@ const networkModel: NetworkModel = {
         actions.updateNodePorts({ id: node.networkId, ports });
         // re-fetch the network with the updated ports
         network = getState().networks.find(n => n.id === networkId) as Network;
+        // re-fetch the node so monitorStartup uses the updated ports, not the stale ones
+        const updatedNode = [
+          ...network.nodes.lightning,
+          ...network.nodes.bitcoin,
+          ...network.nodes.tap,
+        ].find(n => n.name === node.name);
+        if (updatedNode) node = updatedNode;
         await actions.save();
         await injections.dockerService.saveComposeFile(network);
       }

@@ -106,7 +106,6 @@ export const dockerConfigs: Record<NodeImplementationWithSimln, DockerConfig> = 
     volumeDirName: 'lnd',
     command: [
       'lnd',
-      '--noseedbackup',
       '--debuglevel=debug',
       '--trickledelay=5000',
       '--alias={{name}}',

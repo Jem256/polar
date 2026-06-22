@@ -33,6 +33,7 @@ export interface Network {
   };
   manualMineCount: number;
   simulation?: Simulation;
+  hasSeedBackup?: boolean;
 }
 
 /**

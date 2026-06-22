@@ -548,6 +548,7 @@
   "cmps.network.NewNetwork.clightningWindows": "Not supported on Windows yet.",
   "cmps.network.NewNetwork.btnCreate": "Create Network",
   "cmps.network.NewNetwork.createError": "Unable to create the new network",
+  "cmps.network.NewNetwork.seedBackupLabel": "Enable Wallet Seed Backup (LND)",
   "cmps.network.NetworkSetting.title": "Network Setting",
   "cmps.network.NetworkSetting.restPorts": "REST Base Ports",
   "cmps.network.NetworkSetting.grpcPorts": "GRPC Base Ports",

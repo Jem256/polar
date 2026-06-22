@@ -5,6 +5,7 @@ import styled from '@emotion/styled';
 import {
   Button,
   Card,
+  Checkbox,
   Col,
   Divider,
   Form,
@@ -86,6 +87,7 @@ const NewNetwork: React.FC = () => {
             tapdNodes: settings.newNodeCounts.tapd,
             litdNodes: settings.newNodeCounts.litd,
             customNodes: initialCustomValues,
+            hasSeedBackup: false,
           }}
           onFinish={createAsync.execute}
         >
@@ -130,6 +132,9 @@ const NewNetwork: React.FC = () => {
                 rules={[{ required: true, message: l('cmps.forms.required') }]}
               >
                 <InputNumber min={0} max={10} />
+              </Form.Item>
+              <Form.Item name="hasSeedBackup" valuePropName="checked">
+                <Checkbox>{l('seedBackupLabel')}</Checkbox>
               </Form.Item>
             </Col>
             <Col span={6}>

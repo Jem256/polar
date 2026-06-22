@@ -13,8 +13,8 @@ import {
   eclairCredentials,
   litdCredentials,
 } from 'utils/constants';
-import { getContainerName, getDefaultCommand } from 'utils/network';
-import { bitcoind, clightning, eclair, litd, lnd, tapd, simln } from './nodeTemplates';
+import { applySeedBackupFlag, getContainerName, getDefaultCommand } from 'utils/network';
+import { bitcoind, clightning, eclair, litd, lnd, simln, tapd } from './nodeTemplates';
 
 export interface ComposeService {
   image: string;
@@ -95,7 +95,9 @@ class ComposeFile {
     // use the node's custom command or the default for the implementation
     const nodeCommand = node.docker.command || getDefaultCommand('LND', version);
     // replace the variables in the command
-    const command = this.mergeCommand(nodeCommand, variables);
+    let command = this.mergeCommand(nodeCommand, variables);
+    // remove --noseedbackup when seed backup is enabled
+    command = applySeedBackupFlag(command, node.hasSeedBackup);
     // add the docker service
     const svc = lnd(name, container, image, rest, grpc, p2p, command);
     this.addService(svc);

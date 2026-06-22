@@ -459,6 +459,7 @@ export const createNetwork = (config: {
   basePorts?: NodeBasePorts;
   manualMineCount: number;
   simulation?: Simulation;
+  hasSeedBackup?: boolean;
 }): Network => {
   const {
     id,
@@ -476,6 +477,7 @@ export const createNetwork = (config: {
     basePorts,
     manualMineCount,
     simulation,
+    hasSeedBackup,
   } = config;
   // need explicit undefined check because Status.Starting is 0
   const status = config.status !== undefined ? config.status : Status.Stopped;
@@ -494,6 +496,7 @@ export const createNetwork = (config: {
     autoMineMode: AutoMineMode.AutoOff,
     manualMineCount,
     simulation,
+    hasSeedBackup: hasSeedBackup || undefined,
   };
 
   const { bitcoin, lightning } = network.nodes;
@@ -569,16 +572,18 @@ export const createNetwork = (config: {
     if (i < lndNodes) {
       const { latest, compatibility } = repoState.images.LND;
       const cmd = getImageCommand(managedImages, 'LND', latest);
-      lightning.push(
-        createLndNetworkNode(
-          network,
-          latest,
-          compatibility,
-          dockerWrap(cmd),
-          status,
-          basePorts?.LND,
-        ),
+      const node = createLndNetworkNode(
+        network,
+        latest,
+        compatibility,
+        dockerWrap(cmd),
+        status,
+        basePorts?.LND,
       );
+      if (hasSeedBackup) {
+        node.hasSeedBackup = true;
+      }
+      lightning.push(node);
     }
     if (i < clightningNodes) {
       const { latest, compatibility } = repoState.images['c-lightning'];
@@ -1200,4 +1205,18 @@ export const mapToTapd = (node: CommonNode): TapdNode => {
     },
   };
   return tapd;
+};
+
+/**
+ * Adds --noseedbackup to an LND command when seed backup is not enabled.
+ * When hasSeedBackup is true, the flag is omitted so LND starts in locked mode.
+ */
+export const applySeedBackupFlag = (command: string, hasSeedBackup?: boolean): string => {
+  if (hasSeedBackup) {
+    return command.replace(/\s*--noseedbackup/, '').trim();
+  }
+  if (!command.includes('--noseedbackup')) {
+    return command.replace(/^lnd/, 'lnd\n  --noseedbackup');
+  }
+  return command;
 };

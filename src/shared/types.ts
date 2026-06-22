@@ -41,6 +41,7 @@ export interface LndNode extends LightningNode {
     grpc: number;
     p2p: number;
   };
+  hasSeedBackup?: boolean;
 }
 
 export interface CLightningNode extends LightningNode {
