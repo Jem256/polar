@@ -1044,6 +1044,13 @@ const networkModel: NetworkModel = {
       const nextId = Math.max(0, ...networks.map(n => n.id)) + 1;
       const [network, chart] = await importNetworkFromZip(path, nextId);
 
+      // on windows, seed CLN named volumes from the imported data
+      for (const ln of network.nodes.lightning) {
+        if (ln.implementation === 'c-lightning') {
+          await injections.dockerService.copyHostToVolume(ln as CLightningNode);
+        }
+      }
+
       add(network);
       setChart({ chart, id: network.id });
       await save();

@@ -1307,4 +1307,125 @@ describe('DockerService', () => {
       expect(createContainer).not.toHaveBeenCalled();
     });
   });
+
+  describe('copyHostToVolume', () => {
+    const getImage = mockDockerode.prototype.getImage as jest.Mock;
+    const pull = mockDockerode.prototype.pull as jest.Mock;
+    const createVolume = mockDockerode.prototype.createVolume as jest.Mock;
+    const createContainer = mockDockerode.prototype.createContainer as jest.Mock;
+    const getVolume = mockDockerode.prototype.getVolume as jest.Mock;
+    let clnNode: CLightningNode;
+    let mockHelper: {
+      start: jest.Mock;
+      wait: jest.Mock;
+      logs: jest.Mock;
+      remove: jest.Mock;
+    };
+
+    beforeEach(() => {
+      mockOS.platform.mockReturnValue('win32');
+      clnNode = network.nodes.lightning.find(
+        n => n.implementation === 'c-lightning',
+      ) as CLightningNode;
+
+      filesMock.exists.mockResolvedValue(true);
+      getImage.mockReturnValue({ inspect: jest.fn().mockResolvedValue({}) });
+      pull.mockResolvedValue({});
+      (mockDockerode.prototype as any).modem = {
+        followProgress: jest.fn((_stream: any, cb: any) => cb(null, [])),
+      };
+      createVolume.mockResolvedValue(undefined);
+      mockHelper = {
+        start: jest.fn().mockResolvedValue(undefined),
+        wait: jest.fn().mockResolvedValue({ StatusCode: 0 }),
+        logs: jest.fn().mockResolvedValue(Buffer.from('')),
+        remove: jest.fn().mockResolvedValue(undefined),
+      };
+      createContainer.mockResolvedValue(mockHelper);
+      getVolume.mockReturnValue({ remove: jest.fn().mockResolvedValue(undefined) });
+    });
+
+    it('should skip on non-Windows platforms', async () => {
+      mockOS.platform.mockReturnValue('darwin');
+      await dockerService.copyHostToVolume(clnNode);
+      expect(filesMock.exists).not.toHaveBeenCalled();
+    });
+
+    it('should skip seeding if no CLN state exists on the host', async () => {
+      filesMock.exists.mockResolvedValue(false);
+      await dockerService.copyHostToVolume(clnNode);
+      expect(createVolume).not.toHaveBeenCalled();
+    });
+
+    it('should seed the volume without pulling if the image already exists', async () => {
+      await dockerService.copyHostToVolume(clnNode);
+      const containerName = `polar-n${clnNode.networkId}-${clnNode.name}`;
+      const volumeName = `polar-network-${clnNode.networkId}_${containerName}`;
+      expect(getImage).toHaveBeenCalled();
+      expect(pull).not.toHaveBeenCalled();
+      expect(createVolume).toHaveBeenCalledWith({ Name: volumeName });
+      expect(mockHelper.start).toHaveBeenCalled();
+    });
+
+    it('should pull the image if it is not already present', async () => {
+      getImage.mockReturnValue({
+        inspect: jest.fn().mockRejectedValue(new Error('not found')),
+      });
+      await dockerService.copyHostToVolume(clnNode);
+      expect(pull).toHaveBeenCalled();
+      expect(createVolume).toHaveBeenCalled();
+    });
+
+    it('should throw if pulling the image fails', async () => {
+      getImage.mockReturnValue({
+        inspect: jest.fn().mockRejectedValue(new Error('not found')),
+      });
+      (mockDockerode.prototype as any).modem = {
+        followProgress: jest.fn((_stream: any, cb: any) =>
+          cb(new Error('pull failed'), undefined),
+        ),
+      };
+      await expect(dockerService.copyHostToVolume(clnNode)).rejects.toThrow(
+        'pull failed',
+      );
+    });
+
+    it('should throw if the helper container exits with a non-zero status code', async () => {
+      mockHelper.wait.mockResolvedValue({ StatusCode: 1 });
+      mockHelper.logs.mockResolvedValue(Buffer.from('chown: invalid user'));
+      await expect(dockerService.copyHostToVolume(clnNode)).rejects.toThrow(
+        /Failed to seed CLN volume.*exit 1/,
+      );
+    });
+
+    it('should clean up the new volume if seeding fails', async () => {
+      mockHelper.wait.mockResolvedValue({ StatusCode: 1 });
+      const removeVolume = jest.fn().mockResolvedValue(undefined);
+      getVolume.mockReturnValue({ remove: removeVolume });
+      await expect(dockerService.copyHostToVolume(clnNode)).rejects.toThrow();
+      expect(removeVolume).toHaveBeenCalled();
+    });
+
+    it('should not throw additional errors if volume cleanup also fails', async () => {
+      mockHelper.wait.mockResolvedValue({ StatusCode: 1 });
+      getVolume.mockReturnValue({
+        remove: jest.fn().mockRejectedValue(new Error('busy')),
+      });
+      await expect(dockerService.copyHostToVolume(clnNode)).rejects.toThrow(
+        /Failed to seed CLN volume/,
+      );
+    });
+
+    it('should not throw if the helper container fails to be removed', async () => {
+      mockHelper.remove.mockRejectedValue(new Error('remove-failed'));
+      await expect(dockerService.copyHostToVolume(clnNode)).resolves.not.toThrow();
+    });
+
+    it('should not remove the volume when seeding succeeds', async () => {
+      const removeVolume = jest.fn();
+      getVolume.mockReturnValue({ remove: removeVolume });
+      await dockerService.copyHostToVolume(clnNode);
+      expect(removeVolume).not.toHaveBeenCalled();
+    });
+  });
 });

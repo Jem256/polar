@@ -707,6 +707,77 @@ class DockerService implements DockerLibrary {
       info(`Failed to remove old volume ${oldVolumeName}: ${e}`);
     }
   }
+
+  /**
+   * Copies CLN data from the host folder into the named Docker volume on Windows.
+   * @param node the CLN node to seed the volume for
+   */
+  async copyHostToVolume(node: CLightningNode) {
+    if (!isWindows()) return;
+
+    const hostDataDir = dirname(node.paths.rune).replace(/\\/g, '/');
+    if (!(await exists(join(hostDataDir, 'regtest', 'hsm_secret')))) {
+      info(`No CLN state found in '${hostDataDir}', skipping volume seed`);
+      return;
+    }
+
+    const containerName = getContainerName(node);
+    const volumeName = `polar-network-${node.networkId}_${containerName}`;
+    const image =
+      node.docker.image || `${dockerConfigs['c-lightning'].imageName}:${node.version}`;
+
+    const docker = await getDocker();
+
+    try {
+      await docker.getImage(image).inspect();
+    } catch {
+      info(`Pulling image '${image}' to seed CLN volume`);
+      const stream = await docker.pull(image);
+      await new Promise((resolve, reject) => {
+        docker.modem.followProgress(stream, (err, res) =>
+          err ? reject(err) : resolve(res),
+        );
+      });
+    }
+
+    info(`Seeding CLN volume '${volumeName}' from '${hostDataDir}'`);
+    await docker.createVolume({ Name: volumeName });
+    const helper = await docker.createContainer({
+      Image: image,
+      Entrypoint: ['/bin/sh', '-c'],
+      Cmd: [
+        'cd /source && tar --exclude=lightning-rpc -cf - . | tar -xf - -C /dest && ' +
+          'chown -R 1000:1000 /dest',
+      ],
+      HostConfig: {
+        Binds: [`${hostDataDir}:/source:ro`, `${volumeName}:/dest`],
+      },
+    });
+
+    let copySuccessful = false;
+    try {
+      await helper.start();
+      const result = await helper.wait();
+      if (result.StatusCode !== 0) {
+        const logBuf = await helper.logs({ stdout: true, stderr: true, follow: false });
+        throw new Error(
+          `Failed to seed CLN volume '${volumeName}': exit ${result.StatusCode}. ` +
+            `Output: ${logBuf.toString().trim()}`,
+        );
+      }
+      copySuccessful = true;
+    } finally {
+      await helper.remove({ force: true }).catch(e => {
+        info(`Failed to remove helper container: ${e.message}`);
+      });
+      if (!copySuccessful) {
+        await docker
+          .getVolume(volumeName)
+          .remove()
+          .catch(e => info(`Failed to clean up volume ${volumeName}: ${e}`));
+      }
+    }
+  }
 }
 
 export default new DockerService();
