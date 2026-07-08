@@ -13,6 +13,7 @@ import {
 import { Network } from 'types';
 import { defaultRepoState } from './constants';
 import {
+  applySeedBackupFlag,
   createBitcoindNetworkNode,
   createCLightningNetworkNode,
   createLitdNetworkNode,
@@ -647,6 +648,56 @@ describe('Network Utils', () => {
         testNodeDocker,
       );
       expect(() => mapToTapd(lnd)).toThrow(`Node "${lnd.name}" is not a litd node`);
+    });
+  });
+
+  describe('applySeedBackupFlag', () => {
+    it('should remove --noseedbackup when hasSeedBackup is true', () => {
+      const cmd = 'lnd\n  --noseedbackup\n  --debuglevel=debug';
+      expect(applySeedBackupFlag(cmd, true)).not.toContain('--noseedbackup');
+    });
+
+    it('should not duplicate --noseedbackup when already present and hasSeedBackup is false', () => {
+      const cmd = 'lnd\n  --noseedbackup\n  --debuglevel=debug';
+      const result = applySeedBackupFlag(cmd, false);
+      expect(result.match(/--noseedbackup/g)).toHaveLength(1);
+    });
+
+    describe('createNetwork', () => {
+      const baseConfig = {
+        id: 1,
+        name: 'my-test',
+        description: 'my-test-description',
+        lndNodes: 2,
+        clightningNodes: 1,
+        eclairNodes: 1,
+        bitcoindNodes: 1,
+        tapdNodes: 0,
+        litdNodes: 1,
+        status: Status.Stopped,
+        repoState: defaultRepoState,
+        managedImages: testManagedImages,
+        customImages: [],
+        manualMineCount: 6,
+      };
+
+      it('should set hasSeedBackup on LND nodes when hasSeedBackup is true', () => {
+        const network = createNetwork({ ...baseConfig, hasSeedBackup: true });
+        const lndNodes = network.nodes.lightning.filter(n => n.implementation === 'LND');
+        expect(lndNodes.length).toBeGreaterThan(0);
+        lndNodes.forEach(node => {
+          expect((node as LndNode).hasSeedBackup).toBe(true);
+        });
+      });
+
+      it('should not set hasSeedBackup on LND nodes when hasSeedBackup is false', () => {
+        const network = createNetwork({ ...baseConfig, hasSeedBackup: false });
+        const lndNodes = network.nodes.lightning.filter(n => n.implementation === 'LND');
+        expect(lndNodes.length).toBeGreaterThan(0);
+        lndNodes.forEach(node => {
+          expect((node as LndNode).hasSeedBackup).toBeUndefined();
+        });
+      });
     });
   });
 });
